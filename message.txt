@@ -1,0 +1,2 @@
+This is my practice session to implement HTTP from scratch
+It may not be perfect but I will teachs a log.
