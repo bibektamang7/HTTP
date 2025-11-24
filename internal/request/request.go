@@ -4,14 +4,17 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+
+	"github.com/bibektamang7/httpFromScratch/internal/headers"
 )
 
 type parseState string
 
 const (
-	StateInit  parseState = "init"
-	StateDone  parseState = "done"
-	StateError parseState = "error"
+	StateInit    parseState = "init"
+	StateHeaders parseState = "headers"
+	StateDone    parseState = "done"
+	StateError   parseState = "error"
 )
 
 type RequestLine struct {
@@ -43,6 +46,7 @@ func NewRequest() *Request {
 
 var ERROR_MALFORMED_REQUEST_LINE = fmt.Errorf("malformed request line")
 var ERROR_PARSE_ERROR = fmt.Errorf("failed to parse chuck request")
+var ERROR_PARSE_HEADERS = fmt.Errorf("failed to request headers")
 var SEPARATOR = []byte("\r\n")
 
 func parseRequestLine(b []byte) (*RequestLine, int, error) {
@@ -86,7 +90,20 @@ outer:
 			}
 			r.RequestLine = *rl
 			read += n
-			r.state = StateDone
+			r.state = StateHeaders
+		case StateHeaders:
+			headers := headers.NewHeaders()
+			n, done, err := headers.Parse(data[read:])
+			if err != nil {
+				return 0, ERROR_PARSE_HEADERS
+			}
+			if n == 0 {
+				break outer
+			}
+
+			if done {
+				r.state = StateDone
+			}
 		case StateDone:
 			break outer
 		default:
