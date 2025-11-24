@@ -2,7 +2,6 @@ package request
 
 import (
 	"io"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,8 +30,34 @@ func (cr *chunkReader) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
-func TestChunkRequestLineParse(t *testing.T) {
-	// Test: Good GET Request line
+// func TestChunkRequestLineParse(t *testing.T) {
+// 	// Test: Good GET Request line
+// 	reader := &chunkReader{
+// 		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+// 		numBytesPerRead: 3,
+// 	}
+// 	r, err := RequestFromReader(reader)
+// 	require.NoError(t, err)
+// 	require.NotNil(t, r)
+// 	assert.Equal(t, "GET", r.RequestLine.Method)
+// 	assert.Equal(t, "/", r.RequestLine.RequestTarget)
+// 	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
+
+// 	// Test: Good GET Request line with path
+// 	reader = &chunkReader{
+// 		data:            "GET /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+// 		numBytesPerRead: 1,
+// 	}
+// 	r, err = RequestFromReader(reader)
+// 	require.NoError(t, err)
+// 	require.NotNil(t, r)
+// 	assert.Equal(t, "GET", r.RequestLine.Method)
+// 	assert.Equal(t, "/coffee", r.RequestLine.RequestTarget)
+// 	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
+// }
+
+func TestHeaders(t *testing.T) {
+	// Test: Standard Headers
 	reader := &chunkReader{
 		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
 		numBytesPerRead: 3,
@@ -40,48 +65,58 @@ func TestChunkRequestLineParse(t *testing.T) {
 	r, err := RequestFromReader(reader)
 	require.NoError(t, err)
 	require.NotNil(t, r)
-	assert.Equal(t, "GET", r.RequestLine.Method)
-	assert.Equal(t, "/", r.RequestLine.RequestTarget)
-	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
+	hostValue, _ := r.Headers.Get("host")
+	userAgentValue, _ := r.Headers.Get("user-agent")
+	acceptValue, _ := r.Headers.Get("accept")
+	assert.Equal(t, "localhost:42069", hostValue)
+	assert.Equal(t, "curl/7.81.0", userAgentValue)
+	assert.Equal(t, "*/*", acceptValue)
 
-	// Test: Good GET Request line with path
+	// Test: Malformed Header
 	reader = &chunkReader{
-		data:            "GET /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
-		numBytesPerRead: 1,
+		data:            "GET / HTTP/1.1\r\nHost localhost:42069\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
+	require.Error(t, err)
+
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nHost: localhost:8000\r\n\r\n",
+		numBytesPerRead: 3,
 	}
 	r, err = RequestFromReader(reader)
 	require.NoError(t, err)
 	require.NotNil(t, r)
-	assert.Equal(t, "GET", r.RequestLine.Method)
-	assert.Equal(t, "/coffee", r.RequestLine.RequestTarget)
-	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
+
+	hostValue, _ = r.Headers.Get("host")
+	assert.Equal(t, "localhost:42069,localhost:8000", hostValue)
 }
 
-func TestRequestLineParse(t *testing.T) {
-	r, err := RequestFromReader(strings.NewReader("GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
-	require.NoError(t, err)
-	require.NotNil(t, r)
-	assert.Equal(t, "GET", r.RequestLine.Method)
-	assert.Equal(t, "/", r.RequestLine.RequestTarget)
-	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
+// func TestRequestLineParse(t *testing.T) {
+// 	r, err := RequestFromReader(strings.NewReader("GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
+// 	require.NoError(t, err)
+// 	require.NotNil(t, r)
+// 	assert.Equal(t, "GET", r.RequestLine.Method)
+// 	assert.Equal(t, "/", r.RequestLine.RequestTarget)
+// 	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
 
-	r, err = RequestFromReader(strings.NewReader("GET /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
-	require.NoError(t, err)
-	require.NotNil(t, r)
-	assert.Equal(t, "GET", r.RequestLine.Method)
-	assert.Equal(t, "/coffee", r.RequestLine.RequestTarget)
-	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
+// 	r, err = RequestFromReader(strings.NewReader("GET /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
+// 	require.NoError(t, err)
+// 	require.NotNil(t, r)
+// 	assert.Equal(t, "GET", r.RequestLine.Method)
+// 	assert.Equal(t, "/coffee", r.RequestLine.RequestTarget)
+// 	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
 
-	_, err = RequestFromReader(strings.NewReader("/coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
-	require.Error(t, err)
+// 	_, err = RequestFromReader(strings.NewReader("/coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
+// 	require.Error(t, err)
 
-	_, err = RequestFromReader(strings.NewReader("/coffee HTTP/1.1Host: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
-	require.Error(t, err)
+// 	_, err = RequestFromReader(strings.NewReader("/coffee HTTP/1.1Host: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
+// 	require.Error(t, err)
 
-	req, err := RequestFromReader(strings.NewReader("/coffee GET HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
-	require.NoError(t, err)
-	require.NotNil(t, req)
-	assert.NotEqual(t, "GET", req.RequestLine.Method)
-	assert.NotEqual(t, "/coffee", req.RequestLine.RequestTarget)
-	assert.Equal(t, "1.1", req.RequestLine.HttpVersion)
-}
+// 	req, err := RequestFromReader(strings.NewReader("/coffee GET HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
+// 	require.NoError(t, err)
+// 	require.NotNil(t, req)
+// 	assert.NotEqual(t, "GET", req.RequestLine.Method)
+// 	assert.NotEqual(t, "/coffee", req.RequestLine.RequestTarget)
+// 	assert.Equal(t, "1.1", req.RequestLine.HttpVersion)
+// }

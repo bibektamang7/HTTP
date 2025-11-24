@@ -34,13 +34,15 @@ func NewRequestLine(version, target, method string) *RequestLine {
 type Request struct {
 	RequestLine RequestLine
 	state       parseState
+	Headers     headers.Headers
 }
 
 func (r *Request) done() bool { return r.state == StateDone || r.state == StateError }
 
 func NewRequest() *Request {
 	return &Request{
-		state: StateInit,
+		state:   StateInit,
+		Headers: *headers.NewHeaders(),
 	}
 }
 
@@ -92,15 +94,16 @@ outer:
 			read += n
 			r.state = StateHeaders
 		case StateHeaders:
-			headers := headers.NewHeaders()
-			n, done, err := headers.Parse(data[read:])
+			n, done, err := r.Headers.Parse(data[read:])
 			if err != nil {
-				return 0, ERROR_PARSE_HEADERS
+				r.state = StateError
+				return 0, err
 			}
 			if n == 0 {
 				break outer
 			}
 
+			read += n
 			if done {
 				r.state = StateDone
 			}
