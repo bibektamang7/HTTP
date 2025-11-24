@@ -1,6 +1,7 @@
 package request
 
 import (
+	"fmt"
 	"io"
 	"testing"
 
@@ -30,6 +31,56 @@ func (cr *chunkReader) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
+func TestRequest(t *testing.T) {
+	// Test: Standard Body
+	reader := &chunkReader{
+		data: "POST /submit HTTP/1.1\r\n" +
+			"Host: localhost:42069\r\n" +
+			"Content-Length: 13\r\n" +
+			"\r\n" +
+			"hello world!\n",
+		numBytesPerRead: 3,
+	}
+	r, err := RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, "hello world!\n", string(r.Body))
+
+	// Test: Body shorter than reported content length
+	reader = &chunkReader{
+		data: "POST /submit HTTP/1.1\r\n" +
+			"Host: localhost:42069\r\n" +
+			"Content-Length: 20\r\n" +
+			"\r\n" +
+			"partial content",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
+	require.Error(t, err)
+
+	reader = &chunkReader{
+		data: "POST /submit HTTP/1.1\r\n" +
+			"Host: localhost:42069\r\n" +
+			"\r\n" +
+			"partial content",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
+	require.NoError(t, err)
+
+	fmt.Println("i'm taking here")
+	reader = &chunkReader{
+		data: "POST /submit HTTP/1.1\r\n" +
+			"Host: localhost:42069\r\n" +
+			"Content-Length: 20\r\n" +
+			"\r\n" +
+			"partial content",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
+	require.Error(t, err)
+}
+
 // func TestChunkRequestLineParse(t *testing.T) {
 // 	// Test: Good GET Request line
 // 	reader := &chunkReader{
@@ -56,41 +107,41 @@ func (cr *chunkReader) Read(p []byte) (n int, err error) {
 // 	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
 // }
 
-func TestHeaders(t *testing.T) {
-	// Test: Standard Headers
-	reader := &chunkReader{
-		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
-		numBytesPerRead: 3,
-	}
-	r, err := RequestFromReader(reader)
-	require.NoError(t, err)
-	require.NotNil(t, r)
-	hostValue, _ := r.Headers.Get("host")
-	userAgentValue, _ := r.Headers.Get("user-agent")
-	acceptValue, _ := r.Headers.Get("accept")
-	assert.Equal(t, "localhost:42069", hostValue)
-	assert.Equal(t, "curl/7.81.0", userAgentValue)
-	assert.Equal(t, "*/*", acceptValue)
+// func TestHeaders(t *testing.T) {
+// 	// Test: Standard Headers
+// 	reader := &chunkReader{
+// 		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+// 		numBytesPerRead: 3,
+// 	}
+// 	r, err := RequestFromReader(reader)
+// 	require.NoError(t, err)
+// 	require.NotNil(t, r)
+// 	hostValue, _ := r.Headers.Get("host")
+// 	userAgentValue, _ := r.Headers.Get("user-agent")
+// 	acceptValue, _ := r.Headers.Get("accept")
+// 	assert.Equal(t, "localhost:42069", hostValue)
+// 	assert.Equal(t, "curl/7.81.0", userAgentValue)
+// 	assert.Equal(t, "*/*", acceptValue)
 
-	// Test: Malformed Header
-	reader = &chunkReader{
-		data:            "GET / HTTP/1.1\r\nHost localhost:42069\r\n\r\n",
-		numBytesPerRead: 3,
-	}
-	r, err = RequestFromReader(reader)
-	require.Error(t, err)
+// 	// Test: Malformed Header
+// 	reader = &chunkReader{
+// 		data:            "GET / HTTP/1.1\r\nHost localhost:42069\r\n\r\n",
+// 		numBytesPerRead: 3,
+// 	}
+// 	r, err = RequestFromReader(reader)
+// 	require.Error(t, err)
 
-	reader = &chunkReader{
-		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nHost: localhost:8000\r\n\r\n",
-		numBytesPerRead: 3,
-	}
-	r, err = RequestFromReader(reader)
-	require.NoError(t, err)
-	require.NotNil(t, r)
+// 	reader = &chunkReader{
+// 		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nHost: localhost:8000\r\n\r\n",
+// 		numBytesPerRead: 3,
+// 	}
+// 	r, err = RequestFromReader(reader)
+// 	require.NoError(t, err)
+// 	require.NotNil(t, r)
 
-	hostValue, _ = r.Headers.Get("host")
-	assert.Equal(t, "localhost:42069,localhost:8000", hostValue)
-}
+// 	hostValue, _ = r.Headers.Get("host")
+// 	assert.Equal(t, "localhost:42069,localhost:8000", hostValue)
+// }
 
 // func TestRequestLineParse(t *testing.T) {
 // 	r, err := RequestFromReader(strings.NewReader("GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))

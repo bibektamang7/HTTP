@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/bibektamang7/httpFromScratch/internal/headers"
 )
@@ -13,6 +14,7 @@ type parseState string
 const (
 	StateInit    parseState = "init"
 	StateHeaders parseState = "headers"
+	StateBody    parseState = "body"
 	StateDone    parseState = "done"
 	StateError   parseState = "error"
 )
@@ -21,6 +23,19 @@ type RequestLine struct {
 	HttpVersion   string
 	RequestTarget string
 	Method        string
+}
+
+func getHeaderInt(headers *headers.Headers, name string, defaultValue int) int {
+	value, ok := headers.Get(name)
+	if !ok {
+		return defaultValue
+	}
+
+	val, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+	return val
 }
 
 func NewRequestLine(version, target, method string) *RequestLine {
@@ -35,9 +50,14 @@ type Request struct {
 	RequestLine RequestLine
 	state       parseState
 	Headers     headers.Headers
+	Body        []byte
 }
 
 func (r *Request) done() bool { return r.state == StateDone || r.state == StateError }
+func (r *Request) hasBody() bool {
+	length := getHeaderInt(&r.Headers, "content-length", 0)
+	return length > 0
+}
 
 func NewRequest() *Request {
 	return &Request{
@@ -78,11 +98,15 @@ func (r *Request) parse(data []byte) (int, error) {
 	read := 0
 outer:
 	for {
+		currentData := data[read:]
+		if len(currentData) == 0 {
+			break outer
+		}
 		switch r.state {
 		case StateError:
 			return 0, ERROR_PARSE_ERROR
 		case StateInit:
-			rl, n, err := parseRequestLine(data[read:])
+			rl, n, err := parseRequestLine(currentData)
 			if err != nil {
 				r.state = StateError
 				return 0, err
@@ -94,7 +118,7 @@ outer:
 			read += n
 			r.state = StateHeaders
 		case StateHeaders:
-			n, done, err := r.Headers.Parse(data[read:])
+			n, done, err := r.Headers.Parse(currentData)
 			if err != nil {
 				r.state = StateError
 				return 0, err
@@ -105,8 +129,25 @@ outer:
 
 			read += n
 			if done {
+				if r.hasBody() {
+					r.state = StateBody
+				} else {
+					r.state = StateDone
+				}
+			}
+		case StateBody:
+			length := getHeaderInt(&r.Headers, "content-length", 0)
+			if length == 0 {
+				panic("body chunked not implemented")
+			}
+			remaining := min(length-len(r.Body), len(currentData))
+
+			read += remaining
+			r.Body = append(r.Body, currentData[:remaining]...)
+			if length == len(r.Body) {
 				r.state = StateDone
 			}
+			break outer
 		case StateDone:
 			break outer
 		default:
@@ -134,7 +175,18 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		}
 		copy(data, data[n:bufLen])
 		bufLen -= n
+
 	}
 
+	//TODO: EDGE CASES
+	/*
+		content-length is missing, but body is present,
+		Length of content-length and body is differnt
+	*/
+	// length := getHeaderInt(&request.Headers, "content-length", 0)
+	// fmt.Println("this len of body", len(request.Body))
+	// if length != len(request.Body) {
+	// 	return request, fmt.Errorf("mismatched content-length and body length")
+	// }
 	return request, nil
 }
